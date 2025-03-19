@@ -23,10 +23,11 @@ This project leverages a Large Language Model (LLM) to dynamically generate SQL 
    cd <repository-directory>
    pip install -r requirements.txt
    ```
-Set up your environment variables in a .env file:
+2.Set up your environment variables in a .env file:
+```
 GOOGLE_API_KEY=<your-google-api-key>
-
-Run the Streamlit app:
+```
+3.Run the Streamlit app:
 ```
 streamlit run sql.py
 ```
