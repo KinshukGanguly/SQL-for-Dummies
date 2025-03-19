@@ -1,4 +1,4 @@
-# SQL-for-Dummies:SQL Query Generator with LLM
+# A Dummy's Guide to SQL:SQL Query Generator with LLM
 
 ## Overview
 This project leverages a Large Language Model (LLM) to dynamically generate SQL queries based on natural language input. Users can create, modify, and query databases without needing to know SQL syntax. The application supports multiple tables and handles common variations in user input, making it user-friendly and efficient for database management.
