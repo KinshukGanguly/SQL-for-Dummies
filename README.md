@@ -16,18 +16,5 @@ This project leverages a Large Language Model (LLM) to dynamically generate SQL 
 - **Web Framework**: Streamlit for the user interface
 - **Environment Management**: dotenv for environment variable management
 
-## Installation
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd <repository-directory>
-   pip install -r requirements.txt
-   ```
-2.Set up your environment variables in a .env file:
-```
-GOOGLE_API_KEY=<your-google-api-key>
-```
-3.Run the Streamlit app:
-```
-streamlit run sql.py
+
 ```
