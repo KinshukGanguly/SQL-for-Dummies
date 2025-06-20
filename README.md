@@ -17,4 +17,3 @@ This project leverages a Large Language Model (LLM) to dynamically generate SQL 
 - **Environment Management**: dotenv for environment variable management
 
 
-```
