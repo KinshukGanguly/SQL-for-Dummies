@@ -12,7 +12,7 @@ This project leverages a Large Language Model (LLM) to dynamically generate SQL 
 ## Tech Stack
 - **Backend**: Python
 - **Database**: SQLite
-- **LLM API**: Google Generative AI (e.g., Gemini, Bison)
+- **LLM**: Gemini
 - **Web Framework**: Streamlit for the user interface
 - **Environment Management**: dotenv for environment variable management
 
