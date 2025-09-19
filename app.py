@@ -1,21 +1,27 @@
 from dotenv import load_dotenv
 load_dotenv()  
-
 import streamlit as st
 import os
+import pandas as pd
 import sqlite3
 import google.generativeai as genai
+import re
 
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-
+#-------------------GETTING RESPONSE FROM GEMINI-------------------#
 def get_gemini_response(question, prompt):
-    model = genai.GenerativeModel('models/gemini-1.5-pro-latest')
+    model = genai.GenerativeModel('models/gemini-1.5-flash')
     response = model.generate_content([prompt[0], question])
-    return response.text
 
+    # Ensure text extraction works
+    if response.candidates and response.candidates[0].content.parts:
+        return response.candidates[0].content.parts[0].text.strip()
+    else:
+        return ""
 
+#-------------------EXECUTING SQL COMMAND-------------------#
 def execute_sql_command(sql, db):
     conn = sqlite3.connect(db)
     cur = conn.cursor()
@@ -33,89 +39,126 @@ def execute_sql_command(sql, db):
     finally:
         conn.close()
 
+#-------------------EXTRACTING SQL FROM GEMINI RESPONSE-------------------#
+def extract_sql(text: str) -> str:
+    """
+    Extract the first valid SQL command from Gemini response text.
+    Looks for CREATE, SELECT, INSERT, UPDATE, DELETE, or DROP.
+    """
+    match = re.search(
+        r"(CREATE|SELECT|INSERT|UPDATE|DELETE|DROP)[\s\S]+?;", 
+        text, 
+        re.IGNORECASE
+    )
+    return match.group(0).strip() if match else text.strip()
 
+#-------------------PROMPT-------------------#
 prompt = [
     """
-You are an expert in converting natural language questions into accurate and optimized SQL queries. Your task is to analyze user input carefully and generate the most relevant SQL command. 
+You are an expert at converting natural language questions into precise and optimized SQL queries. Your role is to carefully interpret user input and produce the most relevant SQL command.
 
-### **Instructions for Query Generation:**  
-- The database name is flexible and not explicitly mentioned in queries.  
-- Table names and column names are user-defined, so interpret user input contextually.  
-- Adapt to synonyms, abbreviations, and variations in phrasing. For example:
-  - "roll" refers to "Roll number"  
-  - "grade" corresponds to "Grade"  
-  - "how many students?" should translate to `SELECT COUNT(*) FROM STUDENT;`  
-- Ensure the SQL syntax is correct, efficient, and follows best practices.  
-- Avoid including unnecessary elements like "SQL" or enclosing the code in triple backticks (```).  
+### Database Schema:
+1. students
+   - id (INTEGER, PRIMARY KEY, AUTOINCREMENT)
+   - name (TEXT, NOT NULL)
+   - age (INTEGER)
+   - class_id (INTEGER, FOREIGN KEY → classes.id)
+   - grade (TEXT)
 
-### **Example Cases:**  
+2. teachers
+   - id (INTEGER, PRIMARY KEY, AUTOINCREMENT)
+   - name (TEXT, NOT NULL)
+   - subject (TEXT)
+   - class_id (INTEGER, FOREIGN KEY → classes.id)
 
-1. **Table Creation Requests:**  
-   - **User Input:** "Create a table TEACHER with columns NAME and SUBJECT."  
-   - **Output:** `CREATE TABLE TEACHER (NAME VARCHAR(255), SUBJECT VARCHAR(255));`  
+3. classes
+   - id (INTEGER, PRIMARY KEY, AUTOINCREMENT)
+   - name (TEXT, NOT NULL)
+   - section (TEXT)
 
-   - **User Input:** "Create a STUDENT table with NAME, CLASS, SECTION, and AGE."  
-   - **Output:** `CREATE TABLE STUDENT (NAME VARCHAR(255), CLASS VARCHAR(255), SECTION VARCHAR(255), AGE INT);`  
+### Guidelines for Query Generation:
+- Always use the above schema (students, teachers, classes).
+- Database name is not required in queries.
+- Interpret synonyms, abbreviations, and variations in phrasing. Examples:
+  - "roll" → id
+  - "grade" → grade
+  - "how many students?" → SELECT COUNT(*) FROM students;
+- Ensure SQL syntax is correct, efficient, and follows best practices.
+- Do not include extra text like "SQL" or triple backticks.
 
-2. **Data Insertion Requests:**  
-   - **User Input:** "Add a new student named John in Data Science class A."  
-   - **Output:** `INSERT INTO STUDENT (NAME, CLASS, SECTION) VALUES ('John', 'Data Science', 'A');`  
+### Example Conversions:
 
-   - **User Input:** "Insert a teacher Jane who teaches Mathematics."  
-   - **Output:** `INSERT INTO TEACHER (NAME, SUBJECT) VALUES ('Jane', 'Mathematics');`  
+1. Table Creation
+   - Input: "Create a table TEACHER with columns NAME and SUBJECT."
+     Output: CREATE TABLE teachers (name TEXT, subject TEXT);
 
-3. **Data Retrieval Queries:**  
-   - **User Input:** "Show all students in class A."  
-   - **Output:** `SELECT * FROM STUDENT WHERE SECTION = 'A';`  
+   - Input: "Create a STUDENT table with NAME, CLASS, SECTION, and AGE."
+     Output: CREATE TABLE students (name TEXT, age INT, class_id INT, grade TEXT);
 
-   - **User Input:** "Get the total number of students."  
-   - **Output:** `SELECT COUNT(*) FROM STUDENT;`  
+2. Data Insertion
+   - Input: "Add a new student named John in Mathematics section A."
+     Output: INSERT INTO students (name, age, class_id, grade) VALUES ('John', 15, 1, 'A');
 
-4. **Update Requests:**  
-   - **User Input:** "Update John's class to Machine Learning."  
-   - **Output:** `UPDATE STUDENT SET CLASS = 'Machine Learning' WHERE NAME = 'John';`  
+   - Input: "Insert a teacher Jane who teaches Mathematics."
+     Output: INSERT INTO teachers (name, subject, class_id) VALUES ('Jane', 'Mathematics', 1);
 
-   - **User Input:** "Change the subject of Jane to Physics."  
-   - **Output:** `UPDATE TEACHER SET SUBJECT = 'Physics' WHERE NAME = 'Jane';`  
+3. Data Retrieval
+   - Input: "Show all students in section A."
+     Output: SELECT s.* FROM students s JOIN classes c ON s.class_id = c.id WHERE c.section = 'A';
 
-5. **Deletion Requests:**  
-   - **User Input:** "Remove the student named John."  
-   - **Output:** `DELETE FROM STUDENT WHERE NAME = 'John';`  
+   - Input: "Get the total number of students."
+     Output: SELECT COUNT(*) FROM students;
 
-   - **User Input:** "Drop the TEACHER table."  
-   - **Output:** `DROP TABLE IF EXISTS TEACHER;`  
+4. Update Requests
+   - Input: "Update John's grade to B."
+     Output: UPDATE students SET grade = 'B' WHERE name = 'John';
 
-6. **Advanced Queries:**  
-   - **User Input:** "List all students who scored above 80 in Mathematics."  
-   - **Output:** `SELECT * FROM STUDENT WHERE SUBJECT = 'Mathematics' AND GRADE > 80;`  
+   - Input: "Change the subject of Jane to Physics."
+     Output: UPDATE teachers SET subject = 'Physics' WHERE name = 'Jane';
 
-   - **User Input:** "Find the average grade of students in Data Science."  
-   - **Output:** `SELECT AVG(GRADE) FROM STUDENT WHERE CLASS = 'Data Science';`  
+5. Deletion Requests
+   - Input: "Remove the student named John."
+     Output: DELETE FROM students WHERE name = 'John';
 
-### **Additional Considerations:**  
-- Handle plural and singular variations (e.g., "students" vs. "student").  
-- Consider edge cases like missing column names or ambiguous phrases by making the best reasonable assumption.  
-- Do not generate queries with hardcoded assumptions unless explicitly mentioned by the user.  
-- Be cautious with SQL injection attacks by properly sanitizing user input.
+   - Input: "Drop the teachers table."
+     Output: DROP TABLE IF EXISTS teachers;
+
+6. Advanced Queries
+   - Input: "List all students in Mathematics class."
+     Output: SELECT s.* FROM students s JOIN classes c ON s.class_id = c.id WHERE c.name = 'Mathematics';
+
+   - Input: "Find the average age of students in Science class."
+     Output: SELECT AVG(s.age) FROM students s JOIN classes c ON s.class_id = c.id WHERE c.name = 'Science';
+
+### Additional Considerations:
+- Handle plural vs. singular (students vs. student).
+- Resolve ambiguities reasonably when columns are not explicitly named.
+- Do not assume data unless mentioned.
+- Avoid SQL injection by sanitizing inputs.
+- Output only the SQL query, nothing else.
 """
 ]
 
 
 st.set_page_config(page_title="I can Retrieve Any SQL query")
-st.header("Gemini App To Retrieve SQL Data")
+st.header("A Dummy's Guide to SQL")
 
 question = st.text_input("Input: ", key="input")
 submit = st.button("Ask the question")
 
 if submit:
     response = get_gemini_response(question, prompt)
-    print(response)
-    result = execute_sql_command(response, "test.db")
+    print("Raw Gemini response:", response)
+
+    sql_query = extract_sql(response)
+    print("Extracted SQL:", sql_query)
+
+    result = execute_sql_command(sql_query, "school.db")
+    print(result)
     
-    st.subheader("The Response is")
     if result is not None:
+        st.subheader("Query Results:")
         for row in result:
-            print(row)
-            st.header(row)
+            st.write(row)   # clean output in app
     else:
-        st.write("Command executed successfully or no results to display.")
+        st.success("✅ Command executed successfully (no results to display).")
